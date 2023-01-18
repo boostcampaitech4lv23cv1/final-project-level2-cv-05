@@ -172,3 +172,5 @@ poetry.toml
 
 # custom gitignore
 dataset/
+pretrained/
+data/
