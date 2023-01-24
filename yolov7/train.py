@@ -526,11 +526,11 @@ def train(hyp, opt, device, tb_writer=None):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', type=str, default='./pretrained/yolov7x.pt', help='initial weights path')
+    parser.add_argument('--weights', type=str, default='./pretrained/yolov7x_training.pt', help='initial weights path')
     parser.add_argument('--cfg', type=str, default='./cfg/training/yolov7x.yaml', help='model.yaml path')
-    parser.add_argument('--data', type=str, default='data/4th_run_124.yaml', help='data.yaml path')
+    parser.add_argument('--data', type=str, default='./data/4th_run_124.yaml', help='data.yaml path')
     parser.add_argument('--hyp', type=str, default='./data/hyp.scratch.custom.yaml', help='hyperparameters path')
-    parser.add_argument('--epochs', type=int, default=300)
+    parser.add_argument('--epochs', type=int, default=40)
     parser.add_argument('--batch-size', type=int, default=16, help='total batch size for all GPUs')
     parser.add_argument('--img-size', nargs='+', type=int, default=[640, 640], help='[train, test] image sizes')
     parser.add_argument('--rect', action='store_true', help='rectangular training')
