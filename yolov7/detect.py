@@ -67,7 +67,17 @@ def detect(save_img=False):
     old_img_b = 1
 
     t0 = time.time()
+    
+    val_data_path = './dataset/pkt_val_124.txt'
+    with open(val_data_path, 'r') as f:
+        val_data_path_list = f.read()
+    
     for path, img, im0s, vid_cap in dataset:
+        # validation image가 아니라면, pass
+        img_name = path.split('/')[-1]
+        if img_name not in val_data_path_list:
+            continue
+            
         img = torch.from_numpy(img).to(device)
         img = img.half() if half else img.float()  # uint8 to fp16/32
         img /= 255.0  # 0 - 255 to 0.0 - 1.0
@@ -165,8 +175,8 @@ def detect(save_img=False):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', nargs='+', type=str, default='yolov7.pt', help='model.pt path(s)')
-    parser.add_argument('--source', type=str, default='./dataset/test/images', help='source')  # file/folder, 0 for webcam
+    parser.add_argument('--weights', nargs='+', type=str, default='./runs/train/exp14/weights/best.pt', help='model.pt path(s)')
+    parser.add_argument('--source', type=str, default='./dataset/images', help='source')  # file/folder, 0 for webcam
     parser.add_argument('--img-size', type=int, default=640, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.25, help='object confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.45, help='IOU threshold for NMS')
@@ -180,7 +190,7 @@ if __name__ == '__main__':
     parser.add_argument('--augment', action='store_true', help='augmented inference')
     parser.add_argument('--update', action='store_true', help='update all models')
     parser.add_argument('--project', default='runs/detect', help='save results to project/name')
-    parser.add_argument('--name', default='exp', help='save results to project/name')
+    parser.add_argument('--name', default='exp_nolabelX_scale0.5', help='save results to project/name')
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
     parser.add_argument('--no-trace', action='store_true', help='don`t trace model')
     opt = parser.parse_args()

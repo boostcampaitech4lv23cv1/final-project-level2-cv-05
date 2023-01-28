@@ -90,9 +90,20 @@ def box_coord_to_yolo_label(cl, box, width, height):
     h = (y2 - y1) / height
     return [cl, x, y, w, h]
 
-def crop_image(img, box):
+def crop_image(img, box, center_crop=False):
     x1, x2, y1, y2 = box
-    cropped_img = img[y1:y2, x1:x2]
+    if center_crop:
+        # center crop 시, 기존 w, h의 84%에 해당하는 길이 즉, 0.84*0.84=70% center 영역 crop
+        center_x, center_y = int((x1+x2)/2), int((y1+y2)/2)
+        w, h = x2-x1, y2-y1
+        center_crop_w, center_crop_h = 0.84*w, 0.84*h 
+        center_crop_w_2, center_crop_h_2 = int(center_crop_w/2), int(center_crop_h/2)
+        cropped_img = img[center_y-center_crop_h_2:center_y+center_crop_h_2, center_x-center_crop_w_2:center_x+center_crop_w_2]
+        if len(cropped_img)==0:  # ceter crop 된 영역이 너무 작아서, 빈 리스트인 경우 center crop x -> 일반 crop
+            cropped_img = img[y1:y2, x1:x2]
+    else:
+        cropped_img = img[y1:y2, x1:x2]
+        
     return cropped_img
 
 def resize(src, src_area, dst_area, dst_w, dst_h):
@@ -153,7 +164,7 @@ def common_paste(src, src_area, src_w, src_h, dst, dst_area, dst_w, dst_h, dst_b
     dst[y1:y2, x1:x2] = src
     return [x1, x2, y1, y2]
 
-def crop_paste(src_img, src_box, dst_img, dst_box, paste_method='resize'):
+def crop_paste(src_img, src_box, dst_img, dst_box, paste_method='resize', center_crop=False):
     """
     src_img의 box를 crop해서 dst_img의 box 위치에 paste
     
@@ -165,6 +176,7 @@ def crop_paste(src_img, src_box, dst_img, dst_box, paste_method='resize'):
         'resize' : crop된 img1의 box를 img2의 box와 동일한 크기로 resize
         'padding' : img2의 box가 더 클 때 남는 부위를 zero padding, 작을 때는 'paste'와 동일
         'paste' : 그냥 붙여넣는다.
+    center_crop : 기존 box 영역의 약 70%에 해당하는 center 영역을 crop, default:False
     """
     if paste_method not in ['resize']:
         raise ValueError("paste_method : 'resize'")
@@ -194,7 +206,7 @@ def crop_paste(src_img, src_box, dst_img, dst_box, paste_method='resize'):
     dst_box_area = dst_box_w * dst_box_h
   
     # image crop
-    cropped_img = crop_image(src_img, src_box)
+    cropped_img = crop_image(src_img, src_box, center_crop)
     
     if paste_method == 'resize':
         pasted_image = resize_paste(cropped_img, src_box_area, dst_img, dst_box_area, dst_box_w, dst_box_h, dst_box)
