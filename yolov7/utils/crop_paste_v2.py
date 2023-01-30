@@ -164,6 +164,39 @@ def common_paste(src, src_area, src_w, src_h, dst, dst_area, dst_w, dst_h, dst_b
     dst[y1:y2, x1:x2] = src
     return [x1, x2, y1, y2]
 
+#fit paste 추가
+def fit_paste(src, src_area, src_w, src_h, dst, dst_area, dst_w, dst_h, dst_box):
+    src_slope = src_h/src_w
+    dst_slope = dst_h/dst_w
+    result = dst.copy()
+    
+    if (src_slope < 1 and dst_slope > 1) or (src_slope > 1 and dst_slope < 1):
+        src = cv2.rotate(src, cv2.ROTATE_90_CLOCKWISE)
+        temp = src_w
+        src_w = src_h
+        src_h = temp
+        
+    if dst_w/src_w > dst_h/src_h:
+        src_w = dst_w
+        src_h *= dst_w/src_w
+        src_h = int(src_h)
+    else:
+        src_w *= dst_h/src_h
+        src_w = int(src_w)
+        src_h = dst_h
+    
+    dst_img_h, dst_img_w, _ = dst.shape
+    
+    x = (dst_box[0]+dst_box[1])//2
+    y = (dst_box[2]+dst_box[3])//2
+    x1 = max(0,x - src_w//2)
+    y1 = max(0,y - src_h//2)
+    x2 = min(dst_img_w, x1 + src_w)
+    y2 = min(dst_img_h, y1 + src_h)
+    result[y1:y2, x1:x2] = cv2.resize(src, (x2-x1,y2-y1))
+    
+    return result, [x1,x2,y1,y2]
+
 def crop_paste(src_img, src_box, dst_img, dst_box, paste_method='resize', center_crop=False):
     """
     src_img의 box를 crop해서 dst_img의 box 위치에 paste
@@ -178,8 +211,9 @@ def crop_paste(src_img, src_box, dst_img, dst_box, paste_method='resize', center
         'paste' : 그냥 붙여넣는다.
     center_crop : 기존 box 영역의 약 70%에 해당하는 center 영역을 crop, default:False
     """
-    if paste_method not in ['resize']:
-        raise ValueError("paste_method : 'resize'")
+    #paste_method fit 추가
+    if paste_method not in ['resize', 'fit']:
+        raise ValueError("invalid paste_method")
 
     
     # return할 label 값. crop할 박스의 class + paste될 box
@@ -210,6 +244,10 @@ def crop_paste(src_img, src_box, dst_img, dst_box, paste_method='resize', center
     
     if paste_method == 'resize':
         pasted_image = resize_paste(cropped_img, src_box_area, dst_img, dst_box_area, dst_box_w, dst_box_h, dst_box)
+    elif paste_method == 'fit':
+        pasted_image, modified_box = fit_paste(cropped_img, src_box_area, src_box_w, src_box_h, 
+                                    dst_img, dst_box_area, dst_box_w, dst_box_h, dst_box)
+        ret_box = box_coord_to_yolo_label(ret_box[0], modified_box, dst_img_width, dst_img_height)
     # elif paste_method == 'padding' and src_box_area < dst_box_area:
     #     padding_paste(cropped_img, src_box_w, src_box_h, dst_img, dst_box_w, dst_box_h, dst_box)
     # else:

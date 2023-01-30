@@ -569,7 +569,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             # Load image and labels
             if self.augment and random.random() < hyp['crop_paste']:
                 _, (h0, w0), (h, w) = load_image(self, index)
-                img, labels = load_crop_paste(self, index,select_by_box_size=False, center_crop=True)
+                img, labels = load_crop_paste(self, index)
             else:
                 img, (h0, w0), (h, w) = load_image(self, index)
                 labels = self.labels[index].copy()
@@ -730,9 +730,9 @@ def load_mosaic(self, index):
     indices = [index] + random.choices(self.indices, k=3)  # 3 additional image indices
     for i, index in enumerate(indices):
         # Load image and labels
-        if self.augment and random.random() < self.hyp['crop_paste']:
+        if self.augment:
             _, _, (h, w) = load_image(self, index)
-            img, labels = load_crop_paste(self, index, select_by_box_size=False, center_crop=True)
+            img, labels = load_crop_paste(self, index)
             segments = self.segments[index].copy()
         else:
             img, _, (h, w) = load_image(self, index)
@@ -793,9 +793,9 @@ def load_mosaic9(self, index):
     indices = [index] + random.choices(self.indices, k=8)  # 8 additional image indices
     for i, index in enumerate(indices):
         # Load image
-        if self.augment and random.random() < self.hyp['crop_paste']:
+        if self.augment:
             _, _, (h, w) = load_image(self, index)
-            img, labels = load_crop_paste(self, index, select_by_box_size=False, center_crop=True)
+            img, labels = load_crop_paste(self, index)
             segments = self.segments[index].copy()
         else:
             img, _, (h, w) = load_image(self, index)
@@ -1345,8 +1345,23 @@ def load_segmentations(self, index):
     # /work/handsomejw66/coco17/
     return self.segs[key]
 
-def load_crop_paste(self, index, use_session=True, sort_method='low_mIoU', select_by_box_size=True, center_crop=False):
+def load_crop_paste(self, index, use_session=True, sort_method='low_mIoU', select_by_box_size=True, center_crop=False, paste_method='resize', num_targets='one', individual_prob=1.0):
     '''
+    use_session: True: 원본 bbox의 세션과 다른 세션에서 소스 선택
+                 False: 전체에서 랜덤 선택
+                 
+    sort_method: 'low_mIoU': 소스 image 중에서 bbox를 근태님이 설정한 여러가지 옵션에 따라 설정됨
+                 'random': 소스 image 중에서 bbox를 랜덤하게 고름
+    
+    center_crop: 후술바람
+    
+    paste_method: 'resize': 원본 bbox h,w에 딱맞게 resize
+                  'fit': 원본 bbox h/w>1이고 소스 bbox h/w<1이거나, 원본 bbox h/w<1이고 소스 bbox h/w<1 이면 소스 bbox를 90rotate 해주고
+                         소스 bbox의 h/w ratio를 유지하면서 원본 bbox를 최소한의 크기로 덮을때까지 resize
+                         
+    num_targets: 'one': 적용하고자 하는 image의 bboxes 중에 단 하나의 bbox만 랜덤하게 골라서 crop_paste 진행
+                 'all': 적용하고자 하는 image의 모든 bboxes 중에서 'individual_prob'에 따라 랜덤하게 적용한 bbox 선택해서 진행
+    
     select_by_box_size: True -> box size가 가장 비슷한 box 선택, False -> box aspect ration가 가장 비슷한 box 선택
     '''
     base_image, _, _ = load_image(self, index)
@@ -1355,72 +1370,101 @@ def load_crop_paste(self, index, use_session=True, sort_method='low_mIoU', selec
     
     if len(base_label) == 0:
         return base_image, base_label
-    selected_box_idx = random.choice(list(range(len(base_label))))
-    selected_box = base_label[selected_box_idx]
-    
-    if use_session:
-        base_session = self.index_to_session[index]
-        session_candidate_list = list(self.sessions.keys())
-        session_candidate_list.remove(base_session)
-        selected_session_key = random.choice(session_candidate_list)
-        src_idx = random.choice(self.sessions[selected_session_key])
-    else:
-        src_idx = random.choice(self.indices)
-    
-    src_image, _, _ =load_image(self, src_idx)
-    src_image = src_image.copy()
-    src_label = self.labels[src_idx].copy()
     
     new_image = base_image
     new_label = base_label
     
-    if sort_method == 'low_mIoU':  
-        if len(src_label) == 1:
-            src_box = src_label[0]
-
-        # bbox 여러개 인 경우 -> 1. IoU 기반 후보 선정, 2. selected_box의 area와 가장 비슷한 area 가지는 bbox 선정
-
-        elif len(src_label) != 0:       
-            iou_dict = calculate_iou_in_list(src_label)
-            iou_dict_values = list(iou_dict.values())
-            min_iou = min(iou_dict_values)
-            
-            if not min_iou > 0.5:
-
-                # 최소가 한개인 경우, 해당 bbox 선택 
-                if iou_dict_values.count(min_iou) == 1:
-                    src_box_idx = iou_dict_values.index(min_iou)
-                    src_box = src_label[src_box_idx]
-                # 최소가 여러개 일 경우, base_box의 size와 가장 비슷한 size를 가지는 bbox 선택 
-                #                    or base_box의 aspect_ratio와 가장 비슷한 aspect_ratio를 가지는 bbox 선택 
-                else:
-                    # box size 기준 
-                    if select_by_box_size:
-                        base_box_area = float(selected_box[3]) * float(selected_box[4])
-                        min_iou_indices_list = [idx for idx, iou in enumerate(iou_dict_values) if iou==min_iou]
-                        src_box_area_list = [float(src_label[idx][3])*float(src_label[idx][4]) for idx in min_iou_indices_list]
-                        area_gap_list = [abs(base_box_area-area) for area in src_box_area_list]
-                        src_box_idx_idx = area_gap_list.index(min(area_gap_list))
-                        src_box_idx = min_iou_indices_list[src_box_idx_idx]
-                        src_box = src_label[src_box_idx]
-                    # box aspect ratio(h/w) 기준
-                    else:
-                        base_box_aspect_ratio = float(selected_box[4]) / float(selected_box[3]) 
-                        min_iou_indices_list = [idx for idx, iou in enumerate(iou_dict_values) if iou==min_iou]
-                        src_box_aspect_ratio_list = [float(src_label[idx][4])/float(src_label[idx][3]) for idx in min_iou_indices_list]
-                        aspect_ratio_gap_list = [abs(base_box_aspect_ratio-aspect_ratio) for aspect_ratio in src_box_aspect_ratio_list]
-                        src_box_idx_idx = aspect_ratio_gap_list.index(min(aspect_ratio_gap_list))
-                        src_box_idx = min_iou_indices_list[src_box_idx_idx]
-                        src_box = src_label[src_box_idx]
-                    
-            else: return new_image, new_label
-        else: return new_image, new_label
+    # image당 적용할 num_targets(bbox)에 따른 적용
+    # crop_paste가 load될때 hyp['crop_paste']에 비례해 load하던 원래 방식대신 일단 이 함수를 적용하고 여기서 확률에 따라 bbox 선택
+    if num_targets=='one':
+        if random.random() < self.hyp['crop_paste']:
+            selected_box_idx = random.choice(list(range(len(base_label))))
+            selected_box = base_label[selected_box_idx]
+            selected_boxes = [[selected_box_idx,selected_box]]
+    elif num_targets=='all':
+            selected_boxes=[]
+            for i in range(len(base_label)):
+                if random.random() < self.hyp['crop_paste']:
+                    selected_boxes.append([i,base_label[i]])
+    else:
+        raise ValueError("num_targets wrong input")
     
-        pasted_image, ret_box = crop_paste(src_image, list(src_box), base_image, list(selected_box), paste_method='resize', center_crop=center_crop)
+    for selected_box_idx, selected_box in selected_boxes:
+        src_label = []
+        
+        #bbox가 하나라도 있는 src를 선택할때까지 반복
+        while len(src_label)==0:
+            if use_session:
+                base_session = self.index_to_session[index]
+                session_candidate_list = list(self.sessions.keys())
+                session_candidate_list.remove(base_session)
+                selected_session_key = random.choice(session_candidate_list)
+                src_idx = random.choice(self.sessions[selected_session_key])
+            else:
+                src_idx = random.choice(self.indices)
+            src_label = self.labels[src_idx].copy()
+        
+        src_image, _, _ =load_image(self, src_idx)
+        src_image = src_image.copy()
+        
+        if sort_method == 'random':
+            src_box_idx = random.choice(list(range(len(src_label))))
+            src_box = src_label[src_box_idx]
+        
+        elif sort_method == 'low_mIoU':  
+            if len(src_label) == 1:
+                src_box = src_label[0]
 
-        base_label[selected_box_idx] = ret_box
-        if pasted_image is not None: new_image = pasted_image
-        new_label = base_label
+            # bbox 여러개 인 경우 -> 1. IoU 기반 후보 선정, 2. selected_box의 area와 가장 비슷한 area 가지는 bbox 선정
+
+            elif len(src_label) != 0:       
+                iou_dict = calculate_iou_in_list(src_label)
+                iou_dict_values = list(iou_dict.values())
+                min_iou = min(iou_dict_values)
+
+                if not min_iou > 0.5:
+
+                    # 최소가 한개인 경우, 해당 bbox 선택 
+                    if iou_dict_values.count(min_iou) == 1:
+                        src_box_idx = iou_dict_values.index(min_iou)
+                        src_box = src_label[src_box_idx]
+                    # 최소가 여러개 일 경우, base_box의 size와 가장 비슷한 size를 가지는 bbox 선택 
+                    #                    or base_box의 aspect_ratio와 가장 비슷한 aspect_ratio를 가지는 bbox 선택 
+                    else:
+                        # box size 기준 
+                        if select_by_box_size:
+                            base_box_area = float(selected_box[3]) * float(selected_box[4])
+                            min_iou_indices_list = [idx for idx, iou in enumerate(iou_dict_values) if iou==min_iou]
+                            src_box_area_list = [float(src_label[idx][3])*float(src_label[idx][4]) for idx in min_iou_indices_list]
+                            area_gap_list = [abs(base_box_area-area) for area in src_box_area_list]
+                            src_box_idx_idx = area_gap_list.index(min(area_gap_list))
+                            src_box_idx = min_iou_indices_list[src_box_idx_idx]
+                            src_box = src_label[src_box_idx]
+                        # box aspect ratio(h/w) 기준
+                        else:
+                            base_box_aspect_ratio = float(selected_box[4]) / float(selected_box[3]) 
+                            min_iou_indices_list = [idx for idx, iou in enumerate(iou_dict_values) if iou==min_iou]
+                            src_box_aspect_ratio_list = [float(src_label[idx][4])/float(src_label[idx][3]) for idx in min_iou_indices_list]
+                            aspect_ratio_gap_list = [abs(base_box_aspect_ratio-aspect_ratio) for aspect_ratio in src_box_aspect_ratio_list]
+                            src_box_idx_idx = aspect_ratio_gap_list.index(min(aspect_ratio_gap_list))
+                            src_box_idx = min_iou_indices_list[src_box_idx_idx]
+                            src_box = src_label[src_box_idx]
+
+                else: continue
+            #무조건 bbox가 있는 label을 선택하는 반복문을 추가했으므로 label이 없는경우 예외처리 삭제함
+        else: raise ValueError("invalid sort_method")
+        
+        #paste_method fit 추가
+        if paste_method=='resize':
+            pasted_image, ret_box = crop_paste(src_image, list(src_box), new_image, list(selected_box), paste_method='resize', center_crop=center_crop)
+        elif paste_method=='fit':
+            pasted_image, ret_box = crop_paste(src_image, list(src_box), new_image, list(selected_box), paste_method='fit', center_crop=center_crop)
+        else: raise ValueError("invalid paste_method")
+            
+            #pasted_image가 None일 경우 이미지변환은 하지 않고 bbox annotation만 변경하던걸 둘다 하지 않는 것으로 수정함
+            if pasted_image is not None:
+                new_image = pasted_image
+                new_label[seleceted_box_idx] = ret_box
         
     return new_image, new_label
     
