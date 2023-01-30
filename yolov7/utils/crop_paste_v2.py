@@ -211,7 +211,7 @@ def crop_paste(src_img, src_box, dst_img, dst_box, paste_method='resize', center
         'paste' : 그냥 붙여넣는다.
     center_crop : 기존 box 영역의 약 70%에 해당하는 center 영역을 crop, default:False
     """
-    #paste_method fit 추가
+    #paste_method fit 추가됨
     if paste_method not in ['resize', 'fit']:
         raise ValueError("invalid paste_method")
 
