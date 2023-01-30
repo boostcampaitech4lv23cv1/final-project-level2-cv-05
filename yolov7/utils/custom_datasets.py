@@ -1345,7 +1345,7 @@ def load_segmentations(self, index):
     # /work/handsomejw66/coco17/
     return self.segs[key]
 
-def load_crop_paste(self, index, use_session=True, sort_method='low_mIoU', select_by_box_size=True, center_crop=False, paste_method='resize', num_targets='one', individual_prob=1.0):
+def load_crop_paste(self, index, use_session=True, sort_method='low_mIoU', select_by_box_size=True, center_crop=False, paste_method='resize', num_targets='one'):
     '''
     use_session: True: 원본 bbox의 세션과 다른 세션에서 소스 선택
                  False: 전체에서 랜덤 선택
@@ -1462,9 +1462,9 @@ def load_crop_paste(self, index, use_session=True, sort_method='low_mIoU', selec
         else: raise ValueError("invalid paste_method")
             
             #pasted_image가 None일 경우 이미지변환은 하지 않고 bbox annotation만 변경하던걸 둘다 하지 않는 것으로 수정함
-            if pasted_image is not None:
-                new_image = pasted_image
-                new_label[seleceted_box_idx] = ret_box
+        if pasted_image is not None:
+            new_image = pasted_image
+            new_label[seleceted_box_idx] = ret_box
         
     return new_image, new_label
     
