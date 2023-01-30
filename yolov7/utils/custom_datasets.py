@@ -1356,11 +1356,11 @@ def load_crop_paste(self, index, use_session=True, sort_method='low_mIoU', selec
     center_crop: 후술바람
     
     paste_method: 'resize': 원본 bbox h,w에 딱맞게 resize
-                  'fit': 원본 bbox h/w>1이고 소스 bbox h/w<1이거나, 원본 bbox h/w<1이고 소스 bbox h/w<1 이면 소스 bbox를 90rotate 해주고
+                  'fit': 원본 bbox h/w>1이고 소스 bbox h/w<1이거나, 원본 bbox h/w<1이고 소스 bbox h/w>1 이면 소스 bbox를 90rotate 해주고
                          소스 bbox의 h/w ratio를 유지하면서 원본 bbox를 최소한의 크기로 덮을때까지 resize
                          
-    num_targets: 'one': 적용하고자 하는 image의 bboxes 중에 단 하나의 bbox만 랜덤하게 골라서 crop_paste 진행
-                 'all': 적용하고자 하는 image의 모든 bboxes 중에서 'individual_prob'에 따라 랜덤하게 적용한 bbox 선택해서 진행
+    num_targets: 'one': 랜덤하게 선택된 하나의 bbox에 대해 hyp['crop_paste'] 확률에 따라 crop paste 적용
+                 'all': 모든 bbox에 대해 hyp['crop_paste'] 확률에 따라 crop paste 적용
     
     select_by_box_size: True -> box size가 가장 비슷한 box 선택, False -> box aspect ration가 가장 비슷한 box 선택
     '''
