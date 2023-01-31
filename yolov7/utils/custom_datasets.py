@@ -1464,7 +1464,7 @@ def load_crop_paste(self, index, use_session=True, sort_method='low_mIoU', selec
             #pasted_image가 None일 경우 이미지변환은 하지 않고 bbox annotation만 변경하던걸 둘다 하지 않는 것으로 수정함
         if pasted_image is not None:
             new_image = pasted_image
-            new_label[seleceted_box_idx] = ret_box
+            new_label[selected_box_idx] = ret_box
         
     return new_image, new_label
     
