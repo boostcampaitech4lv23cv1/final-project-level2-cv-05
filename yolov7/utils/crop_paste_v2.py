@@ -228,6 +228,7 @@ def crop_paste(src_img, src_box, dst_img, dst_box, paste_method='resize', center
     src_img_height, src_img_width, _ = src_img.shape
     
     # min_x, max_x, min_y, max_y 값으로 변환
+    temp_dst_box = dst_box.copy()
     src_box = get_box_coord(src_box, src_img_width, src_img_height)
     dst_box = get_box_coord(dst_box, dst_img_width, dst_img_height)
 
@@ -239,6 +240,9 @@ def crop_paste(src_img, src_box, dst_img, dst_box, paste_method='resize', center
     src_box_area = src_box_w * src_box_h
     dst_box_area = dst_box_w * dst_box_h
   
+    if src_box_area==0 or dst_box_area==0:
+        return dst_img, temp_dst_box
+
     # image crop
     cropped_img = crop_image(src_img, src_box, center_crop)
     
