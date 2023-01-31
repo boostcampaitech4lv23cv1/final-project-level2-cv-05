@@ -188,8 +188,8 @@ def makeseg(image_path, detection_map, source, prediction_function):
 
 def parse_opt(known=False):
     parser = argparse.ArgumentParser()
-    parser.add_argument('--jsonfile', type=str, default='./train_v4_pkt_sample.json', help='data root folder path')
-    parser.add_argument('--imgpath', type=str, default='../custom_dataset/train/images/', help='class meta data path')
+    parser.add_argument('--jsonfile', type=str, default='./train_v4_pkt_sample.json', help='data json file')
+    parser.add_argument('--imgpath', type=str, default='../custom_dataset/train/images/', help='train data path')
     return parser.parse_known_args()[0] if known else parser.parse_args()
 
 def main(opt):
