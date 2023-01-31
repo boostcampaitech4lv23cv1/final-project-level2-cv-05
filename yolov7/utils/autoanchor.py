@@ -158,3 +158,6 @@ def kmean_anchors(path='./data/coco.yaml', n=9, img_size=640, thr=4.0, gen=1000,
                 print_results(k)
 
     return print_results(k)
+
+if __name__ == '__main__':
+    print(kmean_anchors(path='../dataset/labels/mydata.yaml', n=9, img_size=640))
