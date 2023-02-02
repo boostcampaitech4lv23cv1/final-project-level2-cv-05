@@ -35,7 +35,7 @@ from utils.general import (DATASETS_DIR, LOGGER, NUM_THREADS, TQDM_BAR_FORMAT, c
                            xywh2xyxy, xywhn2xyxy, xyxy2xywhn)
 from utils.torch_utils import torch_distributed_zero_first
 
-from utils.crop_paste import calculate_iou_in_list, crop_paste
+from utils.crop_paste import calculate_iou_in_list, crop_paste, box_out
 from collections import defaultdict
 
 
@@ -104,7 +104,7 @@ def seed_worker(worker_id):
     random.seed(worker_seed)
 
 
-def create_dataloader(path,
+def create_custom_dataloader(path,
                       imgsz,
                       batch_size,
                       stride,
@@ -677,9 +677,14 @@ class LoadImagesAndLabels(Dataset):
 
         else:
             # Load image
-            if self.augment and random.random() < hyp['crop_paste']:
+            if self.augment and random.random() < hyp['box_out']:
+                _, (h0, w0), (h, w) = self.load_image(index)
+                img, labels = self.load_box_out(index)
+
+            elif self.augment and random.random() < hyp['crop_paste']:
                 _, (h0, w0), (h, w) = self.load_image(index)
                 img, labels = self.load_crop_paste(index)
+
             else:
                 img, (h0, w0), (h, w) = self.load_image(index)
                 labels = self.labels[index].copy()
@@ -771,7 +776,10 @@ class LoadImagesAndLabels(Dataset):
         random.shuffle(indices)
         for i, index in enumerate(indices):
             # Load image
-            if self.augment and random.random() < self.hyp['crop_paste']:
+            if self.augment and random.random() < self.hyp['box_out']:
+                _, _, (h, w) = self.load_image(index)
+                img, labels = self.load_box_out(index)
+            elif self.augment and random.random() < self.hyp['crop_paste']:
                 _, _, (h, w) = self.load_image(index)
                 img, labels = self.load_crop_paste(index)
             else:
@@ -833,7 +841,10 @@ class LoadImagesAndLabels(Dataset):
         hp, wp = -1, -1  # height, width previous
         for i, index in enumerate(indices):
             # Load image
-            if self.augment and random.random() < self.hyp['crop_paste']:
+            if self.augment and random.random() < self.hyp['box_out']:
+                _, _, (h, w) = self.load_image(index)
+                img, labels = self.load_box_out(index)
+            elif self.augment and random.random() < self.hyp['crop_paste']:
                 _, _, (h, w) = self.load_image(index)
                 img, labels = self.load_crop_paste(index)
             else:
@@ -999,6 +1010,24 @@ class LoadImagesAndLabels(Dataset):
             if pasted_image is not None: new_image = pasted_image
             new_label = base_label
             
+        return new_image, new_label
+
+    def load_box_out(self, index):
+        base_image, _, _ = self.load_image(index)
+        base_image = base_image.copy()
+        base_label = self.labels[index].copy()
+
+        if len(base_label) <= 1:
+            return base_image, base_label
+        selected_box_idx = random.choice(list(range(len(base_label))))
+        selected_box = base_label[selected_box_idx]
+        
+        new_image = box_out(base_image, selected_box.tolist())
+        if new_image is None:
+            print("None")
+            return base_image, base_label
+        new_label = np.array(base_label[:selected_box_idx].tolist() + base_label[selected_box_idx + 1:].tolist())
+
         return new_image, new_label
 
 

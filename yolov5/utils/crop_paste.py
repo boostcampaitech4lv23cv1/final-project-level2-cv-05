@@ -1,3 +1,4 @@
+import random
 import numpy as np
 import cv2
 from itertools import combinations
@@ -151,6 +152,33 @@ def crop_paste(src_img, src_box, dst_img, dst_box, paste_method='resize', inplac
                                                   dst_box, inplace=False)
         ret_box = box_coord_to_yolo_label(ret_box[0], modified_box, dst_img_width, dst_img_height)
     return pasted_image, ret_box
+
+
+def box_out(dst_img, dst_box):
+
+    # 각 이미지의 height, width 값
+    dst_img_height, dst_img_width, _ = dst_img.shape
+
+    # min_x, max_x, min_y, max_y 값으로 변환
+    dst_box = get_box_coord(dst_box, dst_img_width, dst_img_height)
+    
+    # dst_box가 1보다 작으면
+    if (dst_box[1] - dst_box[0]) * (dst_box[3] - dst_box[2]) == 0:
+        return None
+
+    # box의 width와 height 값
+    dst_box_w, dst_box_h = dst_box[1] - dst_box[0], dst_box[3] - dst_box[2]
+    
+    # box의 크기 
+    dst_box_area = dst_box_w * dst_box_h
+  
+    # box out
+    ret_img = dst_img.copy()
+    x1, x2, y1, y2 = dst_box
+
+    # ret_img[y1:y2, x1:x2] = 0
+    ret_img[y1:y2, x1:x2] = [random.randint(64, 191) for _ in range(3)]
+    return ret_img
 
 
 def IoU(box1, box2):
