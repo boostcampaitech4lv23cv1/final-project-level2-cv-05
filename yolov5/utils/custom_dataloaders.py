@@ -29,7 +29,7 @@ from torch.utils.data import DataLoader, Dataset, dataloader, distributed
 from tqdm import tqdm
 
 from utils.augmentations import (Albumentations, augment_hsv, classify_albumentations, classify_transforms, copy_paste,
-                                 letterbox, mixup, random_perspective)
+                                 letterbox, mixup, random_perspective, cutout)
 from utils.general import (DATASETS_DIR, LOGGER, NUM_THREADS, TQDM_BAR_FORMAT, check_dataset, check_requirements,
                            check_yaml, clean_str, cv2, is_colab, is_kaggle, segments2boxes, unzip_file, xyn2xy,
                            xywh2xyxy, xywhn2xyxy, xyxy2xywhn)
@@ -675,6 +675,10 @@ class LoadImagesAndLabels(Dataset):
             if random.random() < hyp['mixup']:
                 img, labels = mixup(img, labels, *self.load_mosaic(random.randint(0, self.n - 1)))
 
+            # Cutouts
+            if random.random() < hyp['cutout']:
+                labels = cutout(img, labels, p=1.0)
+
         else:
             # Load image
             if self.augment and random.random() < hyp['box_out']:
@@ -731,8 +735,8 @@ class LoadImagesAndLabels(Dataset):
                     labels[:, 1] = 1 - labels[:, 1]
 
             # Cutouts
-            # labels = cutout(img, labels, p=0.5)
-            # nl = len(labels)  # update after cutout
+            labels = cutout(img, labels, p=0.5)
+            nl = len(labels)  # update after cutout
 
         labels_out = torch.zeros((nl, 6))
         if nl:
