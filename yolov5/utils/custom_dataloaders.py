@@ -35,7 +35,7 @@ from utils.general import (DATASETS_DIR, LOGGER, NUM_THREADS, TQDM_BAR_FORMAT, c
                            xywh2xyxy, xywhn2xyxy, xyxy2xywhn)
 from utils.torch_utils import torch_distributed_zero_first
 
-from utils.crop_paste import calculate_iou_in_list, crop_paste, box_out
+from utils.crop_paste import calculate_iou_in_list, crop_paste, box_out, crop_mix
 from collections import defaultdict
 
 
@@ -664,6 +664,8 @@ class LoadImagesAndLabels(Dataset):
     def __getitem__(self, index):
         index = self.indices[index]  # linear, shuffled, or image_weights
 
+        lams = None  # mix lambda 초기화
+
         hyp = self.hyp
         mosaic = self.mosaic and random.random() < hyp['mosaic']
         if mosaic:
@@ -681,7 +683,11 @@ class LoadImagesAndLabels(Dataset):
 
         else:
             # Load image
-            if self.augment and random.random() < hyp['box_out']:
+            if self.augment and random.random() < hyp['crop_mix']:
+                _, (h0, w0), (h, w) = self.load_image(index)
+                img, labels, lams = self.load_crop_mix(index, alpha=hyp['alpha'])
+
+            elif self.augment and random.random() < hyp['box_out']:
                 _, (h0, w0), (h, w) = self.load_image(index)
                 img, labels = self.load_box_out(index)
 
@@ -697,19 +703,20 @@ class LoadImagesAndLabels(Dataset):
             shape = self.batch_shapes[self.batch[index]] if self.rect else self.img_size  # final letterboxed shape
             img, ratio, pad = letterbox(img, shape, auto=False, scaleup=self.augment)
             shapes = (h0, w0), ((h / h0, w / w0), pad)  # for COCO mAP rescaling
-            
+
             if labels.size:  # normalized xywh to pixel xyxy format
                 labels[:, 1:] = xywhn2xyxy(labels[:, 1:], ratio[0] * w, ratio[1] * h, padw=pad[0], padh=pad[1])
-
+            b1 = labels.copy()
             if self.augment:
-                img, labels = random_perspective(img,
-                                                 labels,
-                                                 degrees=hyp['degrees'],
-                                                 translate=hyp['translate'],
-                                                 scale=hyp['scale'],
-                                                 shear=hyp['shear'],
-                                                 perspective=hyp['perspective'])
-                
+                img, labels, lams = random_perspective(img,
+                                                       labels,
+                                                       lams,
+                                                       degrees=hyp['degrees'],
+                                                       translate=hyp['translate'],
+                                                       scale=hyp['scale'],
+                                                       shear=hyp['shear'],
+                                                       perspective=hyp['perspective'])
+            b2 = labels.copy()
         nl = len(labels)  # number of labels
         if nl:
             labels[:, 1:5] = xyxy2xywhn(labels[:, 1:5], w=img.shape[1], h=img.shape[0], clip=True, eps=1E-3)
@@ -735,18 +742,32 @@ class LoadImagesAndLabels(Dataset):
                     labels[:, 1] = 1 - labels[:, 1]
 
             # Cutouts
-            labels = cutout(img, labels, p=0.5)
-            nl = len(labels)  # update after cutout
+            if random.random() < hyp['cutout']:
+                labels = cutout(img, labels, p=1.0)
+                nl = len(labels)  # update after cutout
 
         labels_out = torch.zeros((nl, 6))
+
         if nl:
             labels_out[:, 1:] = torch.from_numpy(labels)
+
+        if lams is None:
+            lams = torch.ones(nl)
+        else:
+            lams = torch.from_numpy(lams)
 
         # Convert
         img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
         img = np.ascontiguousarray(img)
 
-        return torch.from_numpy(img), labels_out, self.im_files[index], shapes
+        if len(lams) != len(labels):
+            print("\n--------------")
+            print(labels_out)
+            print(lams)
+            print(b1)
+            print(b2)
+
+        return torch.from_numpy(img), labels_out, lams, self.im_files[index], shapes
 
     def load_image(self, i):
         # Loads 1 image from dataset index 'i', returns (im, original hw, resized hw)
@@ -773,14 +794,18 @@ class LoadImagesAndLabels(Dataset):
 
     def load_mosaic(self, index):
         # YOLOv5 4-mosaic loader. Loads 1 image + 3 random images into a 4-image mosaic
-        labels4, segments4 = [], []
+        labels4, segments4, lams4 = [], [], []
+        lams = None
         s = self.img_size
         yc, xc = (int(random.uniform(-x, 2 * s + x)) for x in self.mosaic_border)  # mosaic center x, y
         indices = [index] + random.choices(self.indices, k=3)  # 3 additional image indices
         random.shuffle(indices)
         for i, index in enumerate(indices):
             # Load image
-            if self.augment and random.random() < self.hyp['box_out']:
+            if self.augment and random.random() < self.hyp['crop_mix']:
+                _, (h0, w0), (h, w) = self.load_image(index)
+                img, labels, lams = self.load_crop_mix(index, alpha=self.hyp['alpha'])
+            elif self.augment and random.random() < self.hyp['box_out']:
                 _, _, (h, w) = self.load_image(index)
                 img, labels = self.load_box_out(index)
             elif self.augment and random.random() < self.hyp['crop_paste']:
@@ -813,8 +838,11 @@ class LoadImagesAndLabels(Dataset):
             if labels.size:
                 labels[:, 1:] = xywhn2xyxy(labels[:, 1:], w, h, padw, padh)  # normalized xywh to pixel xyxy format
                 segments = [xyn2xy(x, w, h, padw, padh) for x in segments]
+            if lams is None:
+                lams = torch.ones(len(labels))
             labels4.append(labels)
             segments4.extend(segments)
+            lams4.append(lams)
 
         # Concat/clip labels
         labels4 = np.concatenate(labels4, 0)
@@ -822,30 +850,37 @@ class LoadImagesAndLabels(Dataset):
             np.clip(x, 0, 2 * s, out=x)  # clip when using random_perspective()
         # img4, labels4 = replicate(img4, labels4)  # replicate
 
+        lams4 = np.concatenate(lams4, 0)
+
         # Augment
         img4, labels4, segments4 = copy_paste(img4, labels4, segments4, p=self.hyp['copy_paste'])
-        img4, labels4 = random_perspective(img4,
-                                           labels4,
-                                           segments4,
-                                           degrees=self.hyp['degrees'],
-                                           translate=self.hyp['translate'],
-                                           scale=self.hyp['scale'],
-                                           shear=self.hyp['shear'],
-                                           perspective=self.hyp['perspective'],
-                                           border=self.mosaic_border)  # border to remove
+        img4, labels4, lams4 = random_perspective(img4,
+                                                  labels4,
+                                                  lams4,
+                                                  segments4,
+                                                  degrees=self.hyp['degrees'],
+                                                  translate=self.hyp['translate'],
+                                                  scale=self.hyp['scale'],
+                                                  shear=self.hyp['shear'],
+                                                  perspective=self.hyp['perspective'],
+                                                  border=self.mosaic_border)  # border to remove
 
-        return img4, labels4
+        return img4, labels4, lams4
 
     def load_mosaic9(self, index):
         # YOLOv5 9-mosaic loader. Loads 1 image + 8 random images into a 9-image mosaic
-        labels9, segments9 = [], []
+        labels9, segments9, lams9 = [], [], []
+        lams = None
         s = self.img_size
         indices = [index] + random.choices(self.indices, k=8)  # 8 additional image indices
         random.shuffle(indices)
         hp, wp = -1, -1  # height, width previous
         for i, index in enumerate(indices):
             # Load image
-            if self.augment and random.random() < self.hyp['box_out']:
+            if self.augment and random.random() < self.hyp['crop_mix']:
+                _, (h0, w0), (h, w) = self.load_image(index)
+                img, labels, lams = self.load_crop_mix(index, alpha=self.hyp['alpha'])
+            elif self.augment and random.random() < self.hyp['box_out']:
                 _, _, (h, w) = self.load_image(index)
                 img, labels = self.load_box_out(index)
             elif self.augment and random.random() < self.hyp['crop_paste']:
@@ -884,8 +919,11 @@ class LoadImagesAndLabels(Dataset):
             if labels.size:
                 labels[:, 1:] = xywhn2xyxy(labels[:, 1:], w, h, padx, pady)  # normalized xywh to pixel xyxy format
                 segments = [xyn2xy(x, w, h, padx, pady) for x in segments]
+            if lams is None:
+                lams = torch.ones(len(labels))
             labels9.append(labels)
             segments9.extend(segments)
+            lams9.append(lams)
 
             # Image
             img9[y1:y2, x1:x2] = img[y1 - pady:, x1 - padx:]  # img9[ymin:ymax, xmin:xmax]
@@ -906,26 +944,29 @@ class LoadImagesAndLabels(Dataset):
             np.clip(x, 0, 2 * s, out=x)  # clip when using random_perspective()
         # img9, labels9 = replicate(img9, labels9)  # replicate
 
+        lams9 = np.concatenate(lams9, 0)
+
         # Augment
         img9, labels9, segments9 = copy_paste(img9, labels9, segments9, p=self.hyp['copy_paste'])
-        img9, labels9 = random_perspective(img9,
-                                           labels9,
-                                           segments9,
-                                           degrees=self.hyp['degrees'],
-                                           translate=self.hyp['translate'],
-                                           scale=self.hyp['scale'],
-                                           shear=self.hyp['shear'],
-                                           perspective=self.hyp['perspective'],
-                                           border=self.mosaic_border)  # border to remove
+        img9, labels9, lams9 = random_perspective(img9,
+                                                  labels9,
+                                                  lams9,
+                                                  segments9,
+                                                  degrees=self.hyp['degrees'],
+                                                  translate=self.hyp['translate'],
+                                                  scale=self.hyp['scale'],
+                                                  shear=self.hyp['shear'],
+                                                  perspective=self.hyp['perspective'],
+                                                  border=self.mosaic_border)  # border to remove
 
-        return img9, labels9
+        return img9, labels9, lams9
 
     @staticmethod
     def collate_fn(batch):
-        im, label, path, shapes = zip(*batch)  # transposed
+        im, label, lams, path, shapes = zip(*batch)  # transposed
         for i, lb in enumerate(label):
             lb[:, 0] = i  # add target image index for build_targets()
-        return torch.stack(im, 0), torch.cat(label, 0), path, shapes
+        return torch.stack(im, 0), torch.cat(label, 0), torch.cat(lams, 0), path, shapes
 
     @staticmethod
     def collate_fn4(batch):
@@ -1013,8 +1054,86 @@ class LoadImagesAndLabels(Dataset):
             base_label[selected_box_idx] = ret_box
             if pasted_image is not None: new_image = pasted_image
             new_label = base_label
-            
+
         return new_image, new_label
+
+    def load_crop_mix(self, index, use_session=True, sort_method='low_mIoU', alpha=0.2):
+        base_image, _, _ = self.load_image(index)
+        base_image = base_image.copy()
+        base_label = self.labels[index].copy()
+
+        lams = np.ones((len(base_label)))
+
+        if len(base_label) == 0:
+            return base_image, base_label, lams
+        selected_box_idx = random.choice(list(range(len(base_label))))
+        selected_box = base_label[selected_box_idx]        
+
+        if use_session:
+            base_session = self.index_to_session[index]
+            session_candidate_list = list(self.sessions.keys())
+            session_candidate_list.remove(base_session)
+            selected_session_key = random.choice(session_candidate_list)
+            src_idx = random.choice(self.sessions[selected_session_key])
+        else:
+            src_idx = random.choice(self.indices)
+
+        src_image, _, _ = self.load_image(src_idx)
+        src_image = src_image.copy()
+        src_label = self.labels[src_idx].copy()
+
+        new_image = base_image
+        new_label = base_label
+
+        if sort_method == 'low_mIoU':
+            if len(src_label) == 1:
+                src_box = src_label[0]
+
+            # bbox 여러개 인 경우 -> 1. IoU 기반 후보 선정, 2. selected_box의 area와 가장 비슷한 area 가지는 bbox 선정
+
+            elif len(src_label) != 0:       
+                iou_dict = calculate_iou_in_list(src_label)
+                iou_dict_values = list(iou_dict.values())
+                min_iou = min(iou_dict_values)
+
+                if not min_iou > 0.5:
+
+                    # 최소가 한개인 경우, 해당 bbox 선택 
+                    if iou_dict_values.count(min_iou) == 1:
+                        src_box_idx = iou_dict_values.index(min_iou)
+                        src_box = src_label[src_box_idx]
+                    # 최소가 여러개 일 경우, base_box의 area와 가장 비슷한 area를 가지는 bbox 선택
+                    else:
+                        base_box_area = float(selected_box[3]) * float(selected_box[4])
+                        min_iou_indices_list = [idx for idx, iou in enumerate(iou_dict_values) if iou==min_iou]
+                        src_box_area_list = [float(src_label[idx][3])*float(src_label[idx][4]) for idx in min_iou_indices_list]
+                        area_gap_list = [abs(base_box_area-area) for area in src_box_area_list]
+                        src_box_idx_idx = area_gap_list.index(min(area_gap_list))
+                        src_box_idx = min_iou_indices_list[src_box_idx_idx]
+                        src_box = src_label[src_box_idx]
+                else: return new_image, new_label, lams
+            else: return new_image, new_label, lams
+
+            mixed_image, ret_box, mixed_box, lam = crop_mix(src_image, list(src_box), base_image,
+                                                            list(selected_box), alpha=alpha)
+
+            if mixed_image is None:
+                return new_image, new_label, lams
+
+            new_label[selected_box_idx] = ret_box
+
+            new_label = np.empty((base_label.shape[0] + 1, base_label.shape[1]))
+            new_label[:-1] = base_label
+            new_label[-1] = mixed_box
+
+            lams = np.ones(len(new_label))
+            lams[selected_box_idx] = lam
+            lams[-1] = 1 - lam
+
+            if mixed_image is not None:
+                new_image = mixed_image
+
+        return new_image, new_label, lams
 
     def load_box_out(self, index):
         base_image, _, _ = self.load_image(index)
@@ -1025,10 +1144,9 @@ class LoadImagesAndLabels(Dataset):
             return base_image, base_label
         selected_box_idx = random.choice(list(range(len(base_label))))
         selected_box = base_label[selected_box_idx]
-        
+
         new_image = box_out(base_image, selected_box.tolist())
         if new_image is None:
-            print("None")
             return base_image, base_label
         new_label = np.array(base_label[:selected_box_idx].tolist() + base_label[selected_box_idx + 1:].tolist())
 

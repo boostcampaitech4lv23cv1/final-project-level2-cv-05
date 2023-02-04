@@ -143,6 +143,7 @@ def letterbox(im, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleF
 
 def random_perspective(im,
                        targets=(),
+                       lams=None,
                        segments=(),
                        degrees=10,
                        translate=.1,
@@ -232,9 +233,11 @@ def random_perspective(im,
         # filter candidates
         i = box_candidates(box1=targets[:, 1:5].T * s, box2=new.T, area_thr=0.01 if use_segments else 0.10)
         targets = targets[i]
+        if lams is not None:
+            lams = lams[i]
         targets[:, 1:5] = new[i]
 
-    return im, targets
+    return im, targets, lams
 
 
 def copy_paste(im, labels, segments, p=0.5):
