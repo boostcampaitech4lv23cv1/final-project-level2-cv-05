@@ -35,7 +35,7 @@ from utils.general import (DATASETS_DIR, LOGGER, NUM_THREADS, TQDM_BAR_FORMAT, c
                            xywh2xyxy, xywhn2xyxy, xyxy2xywhn)
 from utils.torch_utils import torch_distributed_zero_first
 
-from utils.crop_paste import calculate_iou_in_list, crop_paste, box_out, crop_mix
+from utils.crop_paste import calculate_iou_in_list, crop_paste, box_out, crop_mix, crop_mix2
 from collections import defaultdict
 
 
@@ -685,7 +685,7 @@ class LoadImagesAndLabels(Dataset):
             # Load image
             if self.augment and random.random() < hyp['crop_mix']:
                 _, (h0, w0), (h, w) = self.load_image(index)
-                img, labels, lams = self.load_crop_mix(index, alpha=hyp['alpha'])
+                img, labels, lams = self.load_crop_mix2(index, alpha=hyp['alpha'])
 
             elif self.augment and random.random() < hyp['box_out']:
                 _, (h0, w0), (h, w) = self.load_image(index)
@@ -804,7 +804,7 @@ class LoadImagesAndLabels(Dataset):
             # Load image
             if self.augment and random.random() < self.hyp['crop_mix']:
                 _, (h0, w0), (h, w) = self.load_image(index)
-                img, labels, lams = self.load_crop_mix(index, alpha=self.hyp['alpha'])
+                img, labels, lams = self.load_crop_mix2(index, alpha=self.hyp['alpha'])
             elif self.augment and random.random() < self.hyp['box_out']:
                 _, _, (h, w) = self.load_image(index)
                 img, labels = self.load_box_out(index)
@@ -879,7 +879,7 @@ class LoadImagesAndLabels(Dataset):
             # Load image
             if self.augment and random.random() < self.hyp['crop_mix']:
                 _, (h0, w0), (h, w) = self.load_image(index)
-                img, labels, lams = self.load_crop_mix(index, alpha=self.hyp['alpha'])
+                img, labels, lams = self.load_crop_mix2(index, alpha=self.hyp['alpha'])
             elif self.augment and random.random() < self.hyp['box_out']:
                 _, _, (h, w) = self.load_image(index)
                 img, labels = self.load_box_out(index)
@@ -1116,6 +1116,120 @@ class LoadImagesAndLabels(Dataset):
 
             mixed_image, ret_box, mixed_box, lam = crop_mix(src_image, list(src_box), base_image,
                                                             list(selected_box), alpha=alpha)
+
+            if mixed_image is None:
+                return new_image, new_label, lams
+
+            new_label[selected_box_idx] = ret_box
+
+            new_label = np.empty((base_label.shape[0] + 1, base_label.shape[1]))
+            new_label[:-1] = base_label
+            new_label[-1] = mixed_box
+
+            lams = np.ones(len(new_label))
+            lams[selected_box_idx] = lam
+            lams[-1] = 1 - lam
+
+            if mixed_image is not None:
+                new_image = mixed_image
+
+        return new_image, new_label, lams
+
+    def load_crop_mix2(self, index, use_session=True, sort_method='low_mIoU', alpha=0.2):
+        base_image, _, _ = self.load_image(index)
+        base_image = base_image.copy()
+        base_label = self.labels[index].copy()
+
+        lams = np.ones((len(base_label)))
+
+        if len(base_label) == 0:
+            return base_image, base_label, lams
+        selected_box_idx = random.choice(list(range(len(base_label))))
+        selected_box = base_label[selected_box_idx]        
+
+        if use_session:
+            base_session = self.index_to_session[index]
+            session_candidate_list = list(self.sessions.keys())
+            session_candidate_list.remove(base_session)
+            selected_session_key = random.choice(session_candidate_list)
+            src_idx = random.choice(self.sessions[selected_session_key])
+
+            selected_session_key2 = selected_session_key
+            while selected_session_key == selected_session_key2:
+                selected_session_key2 = random.choice(session_candidate_list)
+            src2_idx = random.choice(self.sessions[selected_session_key2])
+        else:
+            src_idx = random.choice(self.indices)          
+
+        src_image, _, _ = self.load_image(src_idx)
+        src_image = src_image.copy()
+        src_label = self.labels[src_idx].copy()
+
+        src2_image, _, _ = self.load_image(src2_idx)
+        src2_image = src2_image.copy()
+        src2_label = self.labels[src2_idx].copy()
+
+        new_image = base_image
+        new_label = base_label
+
+        if sort_method == 'low_mIoU':
+            if len(src_label) == 1:
+                src_box = src_label[0]
+
+            # bbox 여러개 인 경우 -> 1. IoU 기반 후보 선정, 2. selected_box의 area와 가장 비슷한 area 가지는 bbox 선정
+
+            elif len(src_label) != 0:       
+                iou_dict = calculate_iou_in_list(src_label)
+                iou_dict_values = list(iou_dict.values())
+                min_iou = min(iou_dict_values)
+
+                if not min_iou > 0.5:
+
+                    # 최소가 한개인 경우, 해당 bbox 선택 
+                    if iou_dict_values.count(min_iou) == 1:
+                        src_box_idx = iou_dict_values.index(min_iou)
+                        src_box = src_label[src_box_idx]
+                    # 최소가 여러개 일 경우, base_box의 area와 가장 비슷한 area를 가지는 bbox 선택
+                    else:
+                        base_box_area = float(selected_box[3]) * float(selected_box[4])
+                        min_iou_indices_list = [idx for idx, iou in enumerate(iou_dict_values) if iou==min_iou]
+                        src_box_area_list = [float(src_label[idx][3])*float(src_label[idx][4]) for idx in min_iou_indices_list]
+                        area_gap_list = [abs(base_box_area-area) for area in src_box_area_list]
+                        src_box_idx_idx = area_gap_list.index(min(area_gap_list))
+                        src_box_idx = min_iou_indices_list[src_box_idx_idx]
+                        src_box = src_label[src_box_idx]
+                else: return new_image, new_label, lams
+            else: return new_image, new_label, lams
+
+            if len(src2_label) == 1:
+                src2_box = src2_label[0]
+
+            # bbox 여러개 인 경우 -> 1. IoU 기반 후보 선정, 2. selected_box의 area와 가장 비슷한 area 가지는 bbox 선정
+
+            elif len(src2_label) != 0:       
+                iou_dict = calculate_iou_in_list(src2_label)
+                iou_dict_values = list(iou_dict.values())
+                min_iou = min(iou_dict_values)
+
+                if not min_iou > 0.5:
+
+                    # 최소가 한개인 경우, 해당 bbox 선택 
+                    if iou_dict_values.count(min_iou) == 1:
+                        src2_box_idx = iou_dict_values.index(min_iou)
+                        src2_box = src2_label[src2_box_idx]
+                    # 최소가 여러개 일 경우, base_box의 area와 가장 비슷한 area를 가지는 bbox 선택
+                    else:
+                        base_box_area = float(selected_box[3]) * float(selected_box[4])
+                        min_iou_indices_list = [idx for idx, iou in enumerate(iou_dict_values) if iou==min_iou]
+                        src2_box_area_list = [float(src2_label[idx][3])*float(src2_label[idx][4]) for idx in min_iou_indices_list]
+                        area_gap_list = [abs(base_box_area-area) for area in src2_box_area_list]
+                        src2_box_idx_idx = area_gap_list.index(min(area_gap_list))
+                        src2_box_idx = min_iou_indices_list[src2_box_idx_idx]
+                        src2_box = src2_label[src2_box_idx]
+                else: return new_image, new_label, lams
+            else: return new_image, new_label, lams
+
+            mixed_image, ret_box, mixed_box, lam = crop_mix2(src_image, list(src_box), src2_image, list(src2_box), base_image, list(selected_box), alpha=alpha)
 
             if mixed_image is None:
                 return new_image, new_label, lams

@@ -219,6 +219,78 @@ def crop_mix(src_img, src_box, dst_img, dst_box, alpha=0.2, method='mixup'):
     return mixed_image, ret_box, mixed_box, lam
 
 
+def crop_mix2(src_img, src_box, src2_img, src2_box, dst_img, dst_box, alpha=1.0, method='mixup'):
+    """
+    src_img의 box와 src_img2의 box를 crop해서 mix한 후 dst_img의 box에 paste
+
+    src_img, src2_img : crop할 image
+    src_box, src2_box : crop할 src_img의 bbox
+    dst_img : paste할 image
+    dst_box : paste할 dst_img의 bbox
+    """
+    assert method in ['mixup', 'cutmix']
+
+    lam = np.random.beta(alpha, alpha)
+    ret_box = src2_box[:1] + dst_box[1:]
+    mixed_box = src_box[:1] + dst_box[1:]
+
+    # 각 이미지의 height, width 값
+    src_img_height, src_img_width, _ = src_img.shape
+    src2_img_height, src2_img_width, _ = src2_img.shape
+    dst_img_height, dst_img_width, _ = dst_img.shape
+
+    # resize
+    src_img = resize(src_img, src_img_height*src_img_width, dst_img_height*dst_img_width, dst_img_width, dst_img_height)
+    src_img_height, src_img_width, _ = src_img.shape
+
+    src2_img = resize(src2_img, src2_img_height*src2_img_width, dst_img_height*dst_img_width, dst_img_width, dst_img_height)
+    src2_img_height, src2_img_width, _ = src2_img.shape
+
+    # min_x, max_x, min_y, max_y 값으로 변환
+    src_box = get_box_coord(src_box, src_img_width, src_img_height)
+    src2_box = get_box_coord(src2_box, src2_img_width, src2_img_height)
+    dst_box = get_box_coord(dst_box, dst_img_width, dst_img_height)
+
+    # box의 width와 height 값
+    src_box_w, src_box_h = src_box[1] - src_box[0], src_box[3] - src_box[2]
+    src2_box_w, src2_box_h = src2_box[1] - src2_box[0], src2_box[3] - src2_box[2]
+    dst_box_w, dst_box_h = dst_box[1] - dst_box[0], dst_box[3] - dst_box[2]
+
+    # box의 크기 
+    src_box_area = src_box_w * src_box_h
+    src2_box_area = src2_box_w * src2_box_h
+    dst_box_area = dst_box_w * dst_box_h
+
+    if src_box_area == 0 or dst_box_area == 0 or src2_box_area == 0:
+        return None, None, None, None
+
+    # image crop
+    cropped_img1 = crop_image(src_img, src_box)
+    cropped_img2 = crop_image(src2_img, src2_box)  # dst 대신 src2
+    cropped_img1 = resize(cropped_img1, src_box_area, dst_box_area, dst_box_w, dst_box_h)
+    cropped_img2 = resize(cropped_img2, src2_box_area, dst_box_area, dst_box_w, dst_box_h)
+
+    # box mix
+    if method == 'mixup':
+        cropped_img2 = cropped_img2 * lam + cropped_img1 * (1 - lam)
+    elif method == 'cutmix':
+        cx = np.random.uniform(0, dst_box_w)
+        cy = np.random.uniform(0, dst_box_h)
+        w = dst_box_w * np.sqrt(1 - lam)
+        h = dst_box_h * np.sqrt(1 - lam)
+        x0 = int(np.round(max(cx - w / 2, 0)))
+        x1 = int(np.round(min(cx + w / 2, dst_box_w)))
+        y0 = int(np.round(max(cy - h / 2, 0)))
+        y1 = int(np.round(min(cy + h / 2, dst_box_h)))
+
+        cropped_img2[y0:y1, x0:x1, :] = cropped_img1[y0:y1, x0:x1, :]
+
+    mixed_image = dst_img.copy()
+    mixed_image[dst_box[2]:dst_box[3], dst_box[0]:dst_box[1]] = cropped_img2
+
+    return mixed_image, ret_box, mixed_box, lam
+
+
 def box_out(dst_img, dst_box):
 
     # 각 이미지의 height, width 값
