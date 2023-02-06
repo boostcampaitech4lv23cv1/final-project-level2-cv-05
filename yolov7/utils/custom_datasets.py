@@ -1376,13 +1376,13 @@ def load_crop_paste(self, index, use_session=True, sort_method='low_mIoU', selec
     
     # image당 적용할 num_targets(bbox)에 따른 적용
     # crop_paste가 load될때 hyp['crop_paste']에 비례해 load하던 원래 방식대신 일단 이 함수를 적용하고 여기서 확률에 따라 bbox 선택
+    selected_boxes=[]
     if num_targets=='one':
         if random.random() < self.hyp['crop_paste']:
             selected_box_idx = random.choice(list(range(len(base_label))))
             selected_box = base_label[selected_box_idx]
             selected_boxes = [[selected_box_idx,selected_box]]
     elif num_targets=='all':
-            selected_boxes=[]
             for i in range(len(base_label)):
                 if random.random() < self.hyp['crop_paste']:
                     selected_boxes.append([i,base_label[i]])
