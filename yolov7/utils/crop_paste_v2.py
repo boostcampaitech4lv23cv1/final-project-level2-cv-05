@@ -99,7 +99,7 @@ def crop_image(img, box, center_crop=False):
         center_crop_w, center_crop_h = 0.84*w, 0.84*h 
         center_crop_w_2, center_crop_h_2 = int(center_crop_w/2), int(center_crop_h/2)
         cropped_img = img[center_y-center_crop_h_2:center_y+center_crop_h_2, center_x-center_crop_w_2:center_x+center_crop_w_2]
-        if len(cropped_img)==0:  # ceter crop 된 영역이 너무 작아서, 빈 리스트인 경우 center crop x -> 일반 crop
+        if cropped_img.size==0:  # ceter crop 된 영역이 너무 작아서, 빈 리스트인 경우 center crop x -> 일반 crop
             cropped_img = img[y1:y2, x1:x2]
     else:
         cropped_img = img[y1:y2, x1:x2]
