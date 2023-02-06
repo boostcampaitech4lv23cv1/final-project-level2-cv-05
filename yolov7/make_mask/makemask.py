@@ -88,12 +88,12 @@ def get_mask_prediction_function(model):
 
   return predict_masks
 
-def convert_boxes(boxes):
+def convert_boxes(boxes, image_x_len, image_y_len):
   xmin, ymin, width, height = boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3]
   ymax = ymin + height
   xmax = xmin + width
 
-  return np.stack([ymin/1080, xmin/1920, ymax/1080, xmax/1920], axis=1).astype(np.float32)
+  return np.stack([ymin/image_y_len, xmin/image_x_len, ymax/image_y_len, xmax/image_x_len], axis=1).astype(np.float32)
 
 
 
@@ -164,11 +164,15 @@ def makeseg(image_path, detection_map, source, prediction_function):
     elif len(detection_map[image_id]) == 0:
         print(f'There are no detected objects in the image {image_path}.')
     else:
+        for img_size in source['images']:
+            if img_size['file_name'] == image_id:
+                image_x_len = img_size['width']
+                image_y_len = img_size['height']
         detections = detection_map[image_id]
         image = read_image(image_path)
         ids = np.array([det['id'] for det in detections])
         bboxes = np.array([det['bbox'] for det in detections])
-        bboxes = convert_boxes(bboxes)
+        bboxes = convert_boxes(bboxes, image_x_len, image_y_len)
         masks = prediction_function(tf.convert_to_tensor(image),
                                     tf.convert_to_tensor(bboxes, dtype=tf.float32))
         
@@ -188,7 +192,7 @@ def makeseg(image_path, detection_map, source, prediction_function):
 
 def parse_opt(known=False):
     parser = argparse.ArgumentParser()
-    parser.add_argument('--jsonfile', type=str, default='./train_v4_pkt_sample.json', help='data json file')
+    parser.add_argument('--jsonfile', type=str, default='./train_v4_pkt_sample_2.json', help='data json file')
     parser.add_argument('--imgpath', type=str, default='../custom_dataset/train/images/', help='train data path')
     return parser.parse_known_args()[0] if known else parser.parse_args()
 
@@ -199,6 +203,7 @@ def main(opt):
     print('========= processing model =========')
     prediction_function = get_mask_prediction_function(model)
     BOX_ANNOTATION_FILE = opt.jsonfile
+    print(BOX_ANNOTATION_FILE)
     print('======= make detection_map =========')
     detection_map = create_detection_map(read_json(BOX_ANNOTATION_FILE))
     print('=========== make mask ==============')
