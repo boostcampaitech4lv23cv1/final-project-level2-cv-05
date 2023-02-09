@@ -304,3 +304,35 @@ def calculate_iou_in_list(bbox_list):
         iou_dict[key] = max(iou_dict[key])
         
     return iou_dict
+
+def vertical_cut_mix(dst_img, dst_label, src_img, src_label, index, cuts, num_pieces):
+    src_img_height, src_img_width, _ = src_img.shape
+    dst_img_height, dst_img_width, _ = dst_img.shape
+    
+    cut_start, cut_end = cuts[index], cuts[index+1]
+        
+    src_x1, src_x2 = int(src_img_width*cut_start), int(src_img_width*cut_end)
+    dst_x1, dst_x2 = int(dst_img_width*cut_start), int(dst_img_width*cut_end)
+    
+    if src_x1==src_x2 or dst_x1==dst_x2:
+        return dst_img, dst_label
+    
+    dst_img[:,dst_x1:dst_x2] = cv2.resize(src_img[:,src_x1:src_x2], (dst_x2-dst_x1,dst_img_height))
+    
+    add_label = []
+    
+    for src_bbox in src_label:
+        x1,x2,y1,y2 = get_box_coord(src_bbox, dst_img_width, dst_img_height)
+        if x2-x1==0: continue
+        
+        ix1, ix2 = max(x1,dst_x1), min(x2,dst_x2)
+        iratio = (ix2-ix1)/(x2-x1)
+        if iratio > 0.5:
+            add_label.append(box_coord_to_yolo_label(src_bbox[0], [ix1,ix2,y1,y2], dst_img_width, dst_img_height))
+    
+    add_label = np.array(add_label,dtype=np.float32)
+    
+    if len(add_label) != 0:
+        dst_label = np.concatenate((dst_label,add_label))
+            
+    return dst_img, dst_label

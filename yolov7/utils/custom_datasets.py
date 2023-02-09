@@ -1468,6 +1468,41 @@ def load_crop_paste(self, index, use_session=True, sort_method='low_mIoU', selec
         
     return new_image, new_label
     
+def load_vertical_cut_mix(self, index, use_session=False, cut_method='uniform', num_pieces=4):
+    base_image, _, _ = load_image(self, index)
+    base_image = base_image.copy()
+    base_label = self.labels[index].copy()
     
+    new_image = np.zeros_like(base_image)
+    new_label = np.empty((0,5))
+    
+    if cut_method=='uniform':
+        cuts = [i/num_pieces for i in range(num_pieces+1)]
+    elif cut_method=='random':
+        cuts = [0]+sorted([random.random() for _ in range(num_pieces-1)])+[1]
+    else: raise ValueError("invalid cut_method")
+    
+    src_indices = [index]
+    if use_session:
+        base_session = self.index_to_session[index]
+        session_candidate_list = list(self.sessions.keys())
+        session_candidate_list.remove(base_session)
+    
+        for i in range(num_pieces-1):
+            selected_session_key = random.choice(session_candidate_list)
+            src_idx = random.choice(self.sessions[selected_session_key])
+            src_indices.append(src_idx)
+    else:
+        for i in range(num_pieces-1):
+            src_idx = random.choice(self.indices)
+            src_indices.append(src_idx)
+    
+    for i, src_idx in enumerate(src_indices):
+        src_image, _, _ = load_image(self, src_idx)
+        src_image = src_image.copy()
+        src_label = self.labels[src_idx].copy()
+        new_image, new_label = vertical_cut_mix(new_image, new_label, src_image, src_label, i, cuts, num_pieces)
+        
+    return new_image, new_label
     
     
