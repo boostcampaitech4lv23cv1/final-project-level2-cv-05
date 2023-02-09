@@ -41,19 +41,19 @@ final-project-level2-cv-05 created by GitHub Classroom
 
 ### 무인매장이란?
 
-![Untitled](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/2587ba6a-dcd0-48ba-ac1a-fe605c7d9486/Untitled.png)
+![image](https://user-images.githubusercontent.com/62612606/217691978-da9ebd55-8fb6-491c-8e1d-ff68b83fcbed.png)
 
  무인 매장이란 매장내 직원 없이 자동으로 결제가 되는 매장을 의미합니다. 고객이 어떤 물건을 구매하였는지 카메라로 추적하고 자동으로 결제까지 제공하는 매장을 의미합니다
 
 ## 문제점 파악
 
-![Untitled](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/3c3997ca-00e1-4a2e-8aab-8f9243b8d255/Untitled.png)
+![image](https://user-images.githubusercontent.com/62612606/217692059-02550f0b-63ff-4efb-a77f-0283dfbde58e.png)
 
  매장에서는 수많은 상품들이 있어 데이터을 수집하고 라벨링하는 데에 현실적인 어려움이 존재합니다. 이럴 경우에 생각해 볼 수 있는 방법 중 하나는 상품을 여러 세션으로 나누어 세션 별로 데이터를 수집하는 것입니다. 그러나 현실의 데이터는 session 별로 있지 않고 다양한 상품이 섞여 있으므로, session 단위로 수집된 데이터로 모델이 학습할 경우 Spurious correlation까지 학습하게 되는 위험이 있습니다.
 
 ▽Sprious correlation에 의해 잘못 탐색한 예시
 
-![Untitled](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/9fd81ac3-a8eb-4bd2-bcdc-f50691e87001/Untitled.png)
+![image](https://user-images.githubusercontent.com/62612606/217692125-fe98fd3f-2345-4c9a-bb1c-803066558f4b.png)
 
 - 데이터 수집 과정에서 Session별로 분류한 object들을 균등하게 수집하지 못함
 - 모델이 한 이미지에 같은 Session의 Object만 존재한다고 등장할 확률이 높다고 판단하는 문제 발생
@@ -72,7 +72,7 @@ final-project-level2-cv-05 created by GitHub Classroom
 
 - EDA
     
-    ![Untitled](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/8b31d1a5-7cc7-4510-b83b-a4e855af949e/Untitled.png)
+    ![image](https://user-images.githubusercontent.com/62612606/217692203-04716a13-413e-49cc-8b77-2cec6ba90552.png)
     
     - 분포 상이
 - CV strategy
@@ -91,7 +91,7 @@ Inference 속도가 중요한 무인 매장의 특성 상, Real Time Detection�
 
 ---
 
-![Untitled](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/f5ded204-0112-49c8-8a8c-9649a50cdfb2/Untitled.png)
+![image](https://user-images.githubusercontent.com/62612606/217692267-e83b292b-313b-4442-b37d-39524d2515c5.png)
 
 - 한 이미지의 bbox별로 다른 이미지의 다른 세션의 오브젝트를 가져와 붙여오는 방식
 
@@ -112,15 +112,15 @@ Crop Paste의 경우 타 Augmentation보다 뛰어난 성능을 보임
 
 ### Resize paste
 
-![Animation2.gif](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/a6311433-b252-40c6-abc9-1b8fe157650f/Animation2.gif)
+![Animation2](https://user-images.githubusercontent.com/62612606/217692394-5e79f5cd-e532-412e-97e2-7a6ff8e11658.gif)
 
 ### Fit paste
 
-![Animation.gif](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/360858fc-463d-4bba-acc4-b941394f52d1/Animation.gif)
+![Animation](https://user-images.githubusercontent.com/62612606/217692359-26895e13-d729-4c09-8e9f-8118b04e6ccf.gif)
 
 ### **Bbox Probability**
 
-![Untitled](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/1dfefb82-1f8a-4c50-b556-71d9ba4c0450/Untitled.png)
+![image](https://user-images.githubusercontent.com/62612606/217692467-ec5ed076-b321-454c-a06d-0800acfebd83.png)
 
 기존의 방법은 image 단위로 확률에 따라 적용 여부를 정합니다. 만약 적용한다면 image 내 모든 bbox에 대해 crop paste를 진행합니다. 
 
@@ -159,9 +159,9 @@ Crop Paste의 경우 타 Augmentation보다 뛰어난 성능을 보임
 
 **Yolov7x-p2**
 
-![스크린샷 2023-02-08 오후 4.33.51.png](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/6ee21bb1-d7a6-4664-8d2d-32533951cc60/%E1%84%89%E1%85%B3%E1%84%8F%E1%85%B3%E1%84%85%E1%85%B5%E1%86%AB%E1%84%89%E1%85%A3%E1%86%BA_2023-02-08_%E1%84%8B%E1%85%A9%E1%84%92%E1%85%AE_4.33.51.png)
+![image](https://user-images.githubusercontent.com/62612606/217692577-fc09ad23-71b4-4166-9828-a2cb7ca7e0bc.png)
 
-![스크린샷 2023-02-08 오후 4.34.01.png](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/42203944-8244-44dc-af6c-3051de7b65fb/%E1%84%89%E1%85%B3%E1%84%8F%E1%85%B3%E1%84%85%E1%85%B5%E1%86%AB%E1%84%89%E1%85%A3%E1%86%BA_2023-02-08_%E1%84%8B%E1%85%A9%E1%84%92%E1%85%AE_4.34.01.png)
+![image](https://user-images.githubusercontent.com/62612606/217692649-8192e414-4090-4f15-84f1-6739aaca64e4.png)
 
 - p2 layer를 detection head에 추가하여 receptive field가 작은 feature map 추가 활용
 - top-down path에서 low level에 high level의 feature를 추가하고, bottom-up path에서는 high level에 low level의 feature를 추가하는 기존 구조를 반복
@@ -182,9 +182,6 @@ Crop Paste의 경우 타 Augmentation보다 뛰어난 성능을 보임
 ---
 
 ### 최종 모델 결과 비교
+![image](https://user-images.githubusercontent.com/62612606/217692720-d06d1d42-3ba9-45b4-ba35-0e5e319436b4.png)
 
-![스크린샷 2023-02-08 오후 11.35.28.png](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/1298223a-23ef-4be8-92ab-eace8cdfc4fb/%E1%84%89%E1%85%B3%E1%84%8F%E1%85%B3%E1%84%85%E1%85%B5%E1%86%AB%E1%84%89%E1%85%A3%E1%86%BA_2023-02-08_%E1%84%8B%E1%85%A9%E1%84%92%E1%85%AE_11.35.28.png)
-
-![Untitled](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/be47f59b-ab6b-4c18-bf11-68817317f9cb/Untitled.png)
-
-![Untitled](https://s3-us-west-2.amazonaws.com/secure.notion-static.com/ef0483de-fc3e-4f4a-aee4-047ae4461ca0/Untitled.png)
+![image](https://user-images.githubusercontent.com/62612606/217692763-2c67f1ec-bf5d-4ee5-adee-85295e3a7ea7.png)
