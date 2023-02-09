@@ -1,15 +1,11 @@
-# final-project-level2-cv-05
-final-project-level2-cv-05 created by GitHub Classroom
-
-# 파인더스에이아이
-
+# 무인매장 Object Detection의 Correlation을 최소화하기 위한 Training 전략 수립 프로젝트
 # ⚖️프로젝트 개요
 
 ---
 
 ## 목표
 
-⭐ 데이터내의 spurious correlation 최소화
+⭐ 데이터내의 spurious correlation 최소화  
 ⭐ 모델 성능 향상
 
 ## 문제 정의
@@ -157,9 +153,9 @@ Crop Paste의 경우 타 Augmentation보다 뛰어난 성능을 보임
 
 **기존 Yolov7x**                                                   
 
-**Yolov7x-p2**
-
 ![image](https://user-images.githubusercontent.com/62612606/217692577-fc09ad23-71b4-4166-9828-a2cb7ca7e0bc.png)
+
+**Yolov7x-p2**
 
 ![image](https://user-images.githubusercontent.com/62612606/217692649-8192e414-4090-4f15-84f1-6739aaca64e4.png)
 
