@@ -8,20 +8,6 @@ import pandas as pd
 import cv2
 from itertools import combinations
 
-'''
-label_path = './bootcamp/dataset/labels/'
-label_list = sorted(os.listdir(label_path))
-
-# sessions 리스트에 session 단위로
-sessions = []
-prefixes = [str(i) + '_' for i in range(1, 13)] + ['3rd Run_']
-for prefix in prefixes:
-    session = [(label[:-4] + '.jpg', label) for label in label_list if label.startswith(prefix)]
-    sessions.append(session)
-
-# 시각화 함수
-colors = [[random.randint(0, 255) for _ in range(3)] for _ in range(124)]
-'''
 
 def draw_box(box, image, color, class_number=None):
     x1, x2, y1, y2 = [int(c) for c in box]
@@ -49,21 +35,25 @@ def draw_bboxes(image, labels, colors=None):
         y1, y2 = round(y - h / 2), round(y + h / 2)
         draw_box([x1, x2, y1, y2], image, colors[cl], cl)
         
+
 def get_label(path):
     with open(path) as f:
         r = csv.reader(f, delimiter=' ')
         label_list = list(r)
     return label_list
 
+
 def get_img(path):
     img = cv2.imread(path)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     return img
 
+
 def get_img_label(img_path, label_path):
     img = get_img(img_path)
     label = get_label(label_path)
     return img, label
+
 
 def get_box_coord(label, width, height):
     """
@@ -82,6 +72,7 @@ def get_box_coord(label, width, height):
     y1, y2 = round(y - h / 2), round(y + h / 2)
     return x1, x2, y1, y2
 
+
 def box_coord_to_yolo_label(cl, box, width, height):
     x1, x2, y1, y2 = box
     x = (x1 + x2) / 2 / width
@@ -89,6 +80,7 @@ def box_coord_to_yolo_label(cl, box, width, height):
     w = (x2 - x1) / width
     h = (y2 - y1) / height
     return [cl, x, y, w, h]
+
 
 def crop_image(img, box, center_crop=False):
     x1, x2, y1, y2 = box
@@ -106,6 +98,7 @@ def crop_image(img, box, center_crop=False):
         
     return cropped_img
 
+
 def resize(src, src_area, dst_area, dst_w, dst_h):
     if src_area == 0 or dst_area ==0:  # bbox 매우 작아서 area 0이면 pass
         return None
@@ -113,12 +106,9 @@ def resize(src, src_area, dst_area, dst_w, dst_h):
         resized = cv2.resize(src, (dst_w, dst_h), interpolation=cv2.INTER_AREA)
     else:
         resized = cv2.resize(src, (dst_w, dst_h), interpolation=cv2.INTER_CUBIC)
-    # elif src_area < dst_area:
-    #     resized = cv2.resize(src, (dst_w, dst_h), interpolation=cv2.INTER_CUBIC)
-    # else:
-    #     resized = src
         
     return resized
+
 
 def resize_paste(src, src_area, dst, dst_area, dst_w, dst_h, dst_box):
     resized = resize(src, src_area, dst_area, dst_w, dst_h)
@@ -164,7 +154,7 @@ def common_paste(src, src_area, src_w, src_h, dst, dst_area, dst_w, dst_h, dst_b
     dst[y1:y2, x1:x2] = src
     return [x1, x2, y1, y2]
 
-#fit paste 추가
+
 def fit_paste(src, src_area, src_w, src_h, dst, dst_area, dst_w, dst_h, dst_box):
     src_slope = src_h/src_w
     dst_slope = dst_h/dst_w
@@ -196,6 +186,7 @@ def fit_paste(src, src_area, src_w, src_h, dst, dst_area, dst_w, dst_h, dst_box)
     result[y1:y2, x1:x2] = cv2.resize(src, (x2-x1,y2-y1))
     
     return result, [x1,x2,y1,y2]
+
 
 def crop_paste(src_img, src_box, dst_img, dst_box, paste_method='resize', center_crop=False):
     """
@@ -260,6 +251,7 @@ def crop_paste(src_img, src_box, dst_img, dst_box, paste_method='resize', center
     #     ret_box = box_coord_to_yolo_label(ret_box[0], modified_box, dst_img_width, dst_img_height)
     return pasted_image, ret_box
 
+
 def IoU(box1, box2):
     # box = (x1, y1, x2, y2)
     box1_area = (box1[2] - box1[0] + 1) * (box1[3] - box1[1] + 1)
@@ -278,6 +270,7 @@ def IoU(box1, box2):
     inter = w * h
     iou = inter / (box1_area + box2_area - inter)
     return iou
+
 
 def calculate_iou_in_list(bbox_list):
     """
@@ -304,6 +297,7 @@ def calculate_iou_in_list(bbox_list):
         iou_dict[key] = max(iou_dict[key])
         
     return iou_dict
+
 
 def crop_mix(src_img, src_box, src2_img, src2_box, dst_img, dst_box, alpha=0.2, method='mixup'):
     """
@@ -378,3 +372,36 @@ def crop_mix(src_img, src_box, src2_img, src2_box, dst_img, dst_box, alpha=0.2, 
     mixed_image[dst_box[2]:dst_box[3], dst_box[0]:dst_box[1]] = cropped_img2
 
     return mixed_image, ret_box, mixed_box, lam
+
+
+def vertical_cut_mix(dst_img, dst_label, src_img, src_label, index, cuts, num_pieces):
+    src_img_height, src_img_width, _ = src_img.shape
+    dst_img_height, dst_img_width, _ = dst_img.shape
+    
+    cut_start, cut_end = cuts[index], cuts[index+1]
+        
+    src_x1, src_x2 = int(src_img_width*cut_start), int(src_img_width*cut_end)
+    dst_x1, dst_x2 = int(dst_img_width*cut_start), int(dst_img_width*cut_end)
+    
+    if src_x1==src_x2 or dst_x1==dst_x2:
+        return dst_img, dst_label
+    
+    dst_img[:,dst_x1:dst_x2] = cv2.resize(src_img[:,src_x1:src_x2], (dst_x2-dst_x1,dst_img_height))
+    
+    add_label = []
+    
+    for src_bbox in src_label:
+        x1,x2,y1,y2 = get_box_coord(src_bbox, dst_img_width, dst_img_height)
+        if x2-x1==0: continue
+        
+        ix1, ix2 = max(x1,dst_x1), min(x2,dst_x2)
+        iratio = (ix2-ix1)/(x2-x1)
+        if iratio > 0.5:
+            add_label.append(box_coord_to_yolo_label(src_bbox[0], [ix1,ix2,y1,y2], dst_img_width, dst_img_height))
+    
+    add_label = np.array(add_label,dtype=np.float32)
+    
+    if len(add_label) != 0:
+        dst_label = np.concatenate((dst_label,add_label))
+            
+    return dst_img, dst_label
