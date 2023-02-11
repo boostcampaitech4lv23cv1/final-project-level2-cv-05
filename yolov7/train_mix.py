@@ -30,7 +30,7 @@ from utils.general import labels_to_class_weights, increment_path, labels_to_ima
     fitness, strip_optimizer, get_latest_run, check_dataset, check_file, check_git_status, check_img_size, \
     check_requirements, print_mutation, set_logging, one_cycle, colorstr
 from utils.google_utils import attempt_download
-from utils.loss import ComputeLoss, ComputeLossOTA, ComputeMixedLoss, ComputeMixedLossOTA
+from utils.loss import ComputeLoss, ComputeMixedLoss
 from utils.plots import plot_images, plot_labels, plot_results, plot_evolution
 from utils.torch_utils import ModelEMA, select_device, intersect_dicts, torch_distributed_zero_first, is_parallel
 from utils.wandb_logging.wandb_utils import WandbLogger, check_wandb_resume
@@ -297,10 +297,8 @@ def train(hyp, opt, device, tb_writer=None):
     results = (0, 0, 0, 0, 0, 0, 0)  # P, R, mAP@.5, mAP@.5-.95, val_loss(box, obj, cls)
     scheduler.last_epoch = start_epoch - 1  # do not move
     scaler = amp.GradScaler(enabled=cuda)
-    compute_loss_ota = ComputeLossOTA(model)  # init loss class
     compute_loss = ComputeLoss(model)  # init loss class
     compute_mixed_loss = ComputeMixedLoss(model)
-    compute_mixed_loss_ota = ComputeMixedLossOTA(model)
     logger.info(f'Image sizes {imgsz} train, {imgsz_test} test\n'
                 f'Using {dataloader.num_workers} dataloader workers\n'
                 f'Logging results to {save_dir}\n'
@@ -361,10 +359,7 @@ def train(hyp, opt, device, tb_writer=None):
             # Forward
             with amp.autocast(enabled=cuda):
                 pred = model(imgs)  # forward
-                if 'loss_ota' not in hyp or hyp['loss_ota'] == 1:
-                    loss, loss_items = compute_mixed_loss_ota(pred, targets.to(device), lams.to(device), imgs)  # loss scaled by batch_size
-                else:
-                    loss, loss_items = compute_mixed_loss(pred, targets.to(device), lams.to(device))  # loss scaled by batch_size
+                loss, loss_items = compute_mixed_loss(pred, targets.to(device), lams.to(device))  # loss scaled by batch_size
                 if rank != -1:
                     loss *= opt.world_size  # gradient averaged between devices in DDP mode
                 if opt.quad:
@@ -468,7 +463,7 @@ def train(hyp, opt, device, tb_writer=None):
                     torch.save(ckpt, best)
                 if (best_fitness == fi) and (epoch >= 200):
                     torch.save(ckpt, wdir / 'best_{:03d}.pt'.format(epoch))
-                if epoch == 39:  # 0 -> 39
+                if epoch == 0:
                     torch.save(ckpt, wdir / 'epoch_{:03d}.pt'.format(epoch))
                 elif ((epoch+1) % 25) == 0:
                     torch.save(ckpt, wdir / 'epoch_{:03d}.pt'.format(epoch))
@@ -531,7 +526,7 @@ if __name__ == '__main__':
     parser.add_argument('--weights', type=str, default='./pretrained/yolov7x_training.pt', help='initial weights path')
     parser.add_argument('--cfg', type=str, default='./cfg/training/yolov7x.yaml', help='model.yaml path')
     parser.add_argument('--data', type=str, default='./data/4th_run_124.yaml', help='data.yaml path')
-    parser.add_argument('--hyp', type=str, default='./data/hyp.scratch.custom.yaml', help='hyperparameters path')
+    parser.add_argument('--hyp', type=str, default='./data/hyp.crop_mix.yaml', help='hyperparameters path')
     parser.add_argument('--epochs', type=int, default=40)
     parser.add_argument('--batch-size', type=int, default=16, help='total batch size for all GPUs')
     parser.add_argument('--img-size', nargs='+', type=int, default=[640, 640], help='[train, test] image sizes')
