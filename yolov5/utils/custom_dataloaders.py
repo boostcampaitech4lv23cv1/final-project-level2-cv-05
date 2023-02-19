@@ -670,7 +670,7 @@ class LoadImagesAndLabels(Dataset):
         mosaic = self.mosaic and random.random() < hyp['mosaic']
         if mosaic:
             # Load mosaic
-            img, labels = self.load_mosaic(index)
+            img, labels, lams = self.load_mosaic(index)
             shapes = None
 
             # MixUp augmentation
@@ -762,7 +762,7 @@ class LoadImagesAndLabels(Dataset):
 
         if len(lams) != len(labels):
             print("\n--------------")
-            print(labels_out)
+            print(labels_out) 
             print(lams)
             print(b1)
             print(b2)
@@ -795,12 +795,12 @@ class LoadImagesAndLabels(Dataset):
     def load_mosaic(self, index):
         # YOLOv5 4-mosaic loader. Loads 1 image + 3 random images into a 4-image mosaic
         labels4, segments4, lams4 = [], [], []
-        lams = None
         s = self.img_size
         yc, xc = (int(random.uniform(-x, 2 * s + x)) for x in self.mosaic_border)  # mosaic center x, y
         indices = [index] + random.choices(self.indices, k=3)  # 3 additional image indices
         random.shuffle(indices)
         for i, index in enumerate(indices):
+            lams = None
             # Load image
             if self.augment and random.random() < self.hyp['crop_mix']:
                 _, (h0, w0), (h, w) = self.load_image(index)
@@ -870,12 +870,12 @@ class LoadImagesAndLabels(Dataset):
     def load_mosaic9(self, index):
         # YOLOv5 9-mosaic loader. Loads 1 image + 8 random images into a 9-image mosaic
         labels9, segments9, lams9 = [], [], []
-        lams = None
         s = self.img_size
         indices = [index] + random.choices(self.indices, k=8)  # 8 additional image indices
         random.shuffle(indices)
         hp, wp = -1, -1  # height, width previous
         for i, index in enumerate(indices):
+            lams = None
             # Load image
             if self.augment and random.random() < self.hyp['crop_mix']:
                 _, (h0, w0), (h, w) = self.load_image(index)
