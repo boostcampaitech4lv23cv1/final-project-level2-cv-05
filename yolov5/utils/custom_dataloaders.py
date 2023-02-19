@@ -675,7 +675,13 @@ class LoadImagesAndLabels(Dataset):
 
             # MixUp augmentation
             if random.random() < hyp['mixup']:
-                img, labels = mixup(img, labels, *self.load_mosaic(random.randint(0, self.n - 1)))
+                img2, labels2, lams2 = self.load_mosaic(random.randint(0, self.n - 1))
+                r = np.random.beta(0.2, 0.2)
+                img = (img * r + img2 * (1 - r)).astype(np.uint8)
+                lams *= r
+                lams2 *= (1 - r)
+                labels = np.concatenate((labels, labels2), 0)
+                lams = np.concatenate((lams, lams2), 0)
 
             # Cutouts
             if random.random() < hyp['cutout']:
