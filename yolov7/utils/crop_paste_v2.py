@@ -1,58 +1,6 @@
-import os
-import glob
-import csv
-import random
 import numpy as np
-import matplotlib.pyplot as plt
-import pandas as pd
 import cv2
 from itertools import combinations
-
-
-def draw_box(box, image, color, class_number=None):
-    x1, x2, y1, y2 = [int(c) for c in box]
-    thickness = round(0.002 * (image.shape[0] + image.shape[1]) / 2) + 1
-    cv2.rectangle(image, (x1, y1), (x2, y2), color, thickness=thickness, lineType=cv2.LINE_AA)
-    if class_number is not None:
-        cv2.putText(image, str(class_number), (int(x1*0.98), int(y1*0.98)), cv2.FONT_ITALIC, 2, color, 2, cv2.LINE_AA)
-
-        
-def draw_bboxes(image, labels, colors=None):
-    """
-    image : 이미지
-    labels : label [클래스, min_x, min_y, width, height] 들이 담겨있는 리스트
-    """
-    if colors is None:
-        colors = [[random.randint(0, 255) for _ in range(3)] for _ in range(124)]
-    height, width, channels = image.shape
-    for cl, x, y, w, h in labels:
-        cl = int(cl)
-        x = float(x) * width
-        y = float(y) * height
-        w = float(w) * width
-        h = float(h) * height
-        x1, x2 = round(x - w / 2), round(x + w / 2)
-        y1, y2 = round(y - h / 2), round(y + h / 2)
-        draw_box([x1, x2, y1, y2], image, colors[cl], cl)
-        
-
-def get_label(path):
-    with open(path) as f:
-        r = csv.reader(f, delimiter=' ')
-        label_list = list(r)
-    return label_list
-
-
-def get_img(path):
-    img = cv2.imread(path)
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    return img
-
-
-def get_img_label(img_path, label_path):
-    img = get_img(img_path)
-    label = get_label(label_path)
-    return img, label
 
 
 def get_box_coord(label, width, height):
@@ -120,41 +68,6 @@ def resize_paste(src, src_area, dst, dst_area, dst_w, dst_h, dst_box):
     return pasted_image
 
 
-def zero_padding(src, src_w, src_h, dst_w, dst_h):
-    shift_x = (dst_w - src_w) / 2
-    shift_y = (dst_h - src_h) / 2
-    m = np.float32([[1, 0, shift_x], [0, 1, shift_y]])
-    dsize = (dst_w, dst_h)
-    padded = cv2.warpAffine(src, m, dsize)
-    return padded
-
-
-def padding_paste(src, src_w, src_h, dst, dst_w, dst_h, dst_box):
-    padded = zero_padding(src, src_w, src_h, dst_w, dst_h)
-    dst[dst_box[2]:dst_box[3], dst_box[0]:dst_box[1]] = padded
-
-
-def common_paste(src, src_area, src_w, src_h, dst, dst_area, dst_w, dst_h, dst_box):
-    if src_area > dst_area:
-        w1 = (src_w - dst_w) // 2
-        w2 = src_w - dst_w - w1
-        h1 = (src_h - dst_h) // 2
-        h2 = src_h - dst_h - h1
-        x1, x2 = dst_box[0] - w1, dst_box[1] + w2
-        y1, y2 = dst_box[2] - h1, dst_box[3] + h1
-    elif src_area < dst_area:
-        w1 = (dst_w - src_w) // 2
-        w2 = dst_w - src_w - w1
-        h1 = (dst_h - src_h) // 2
-        h2 = dst_h - src_h - h1
-        x1, x2 = dst_box[0] + w1, dst_box[1] - w2
-        y1, y2 = dst_box[2] + h1, dst_box[3] - h2
-    else:
-        x1, x2, y1, y2 = dst_box
-    dst[y1:y2, x1:x2] = src
-    return [x1, x2, y1, y2]
-
-
 def fit_paste(src, src_area, src_w, src_h, dst, dst_area, dst_w, dst_h, dst_box):
     src_slope = src_h/src_w
     dst_slope = dst_h/dst_w
@@ -183,6 +96,9 @@ def fit_paste(src, src_area, src_w, src_h, dst, dst_area, dst_w, dst_h, dst_box)
     y1 = max(0,y - src_h//2)
     x2 = min(dst_img_w, x1 + src_w)
     y2 = min(dst_img_h, y1 + src_h)
+    if x2 - x1 < 1 or y2 - y1 < 1:
+        result = resize_paste(src, src_area, dst, dst_area, dst_w, dst_h, dst_box)
+        return result, dst_box
     result[y1:y2, x1:x2] = cv2.resize(src, (x2-x1,y2-y1))
     
     return result, [x1,x2,y1,y2]
@@ -243,12 +159,7 @@ def crop_paste(src_img, src_box, dst_img, dst_box, paste_method='resize', center
         pasted_image, modified_box = fit_paste(cropped_img, src_box_area, src_box_w, src_box_h, 
                                     dst_img, dst_box_area, dst_box_w, dst_box_h, dst_box)
         ret_box = box_coord_to_yolo_label(ret_box[0], modified_box, dst_img_width, dst_img_height)
-    # elif paste_method == 'padding' and src_box_area < dst_box_area:
-    #     padding_paste(cropped_img, src_box_w, src_box_h, dst_img, dst_box_w, dst_box_h, dst_box)
-    # else:
-    #     modified_box = common_paste(cropped_img, src_box_area, src_box_w, src_box_h, 
-    #                                 dst_img, dst_box_area, dst_box_w, dst_box_h, dst_box)
-    #     ret_box = box_coord_to_yolo_label(ret_box[0], modified_box, dst_img_width, dst_img_height)
+
     return pasted_image, ret_box
 
 
