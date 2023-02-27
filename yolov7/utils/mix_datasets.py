@@ -735,11 +735,11 @@ def load_mosaic(self, index):
     # loads images in a 4-mosaic
 
     labels4, segments4, lams4 = [], [], []
-    lams = None
     s = self.img_size
     yc, xc = [int(random.uniform(-x, 2 * s + x)) for x in self.mosaic_border]  # mosaic center x, y
     indices = [index] + random.choices(self.indices, k=3)  # 3 additional image indices
     for i, index in enumerate(indices):
+        lams = None
         # Load image and labels
         _, _, (h, w) = load_image(self, index)
         img, labels, lams = load_crop_mix_paste(self, index, alpha=self.hyp['alpha'])
@@ -801,10 +801,10 @@ def load_mosaic9(self, index):
     # loads images in a 9-mosaic
 
     labels9, segments9, lams9 = [], [], []
-    lams = None
     s = self.img_size
     indices = [index] + random.choices(self.indices, k=8)  # 8 additional image indices
     for i, index in enumerate(indices):
+        lams = None
         # Load image
         _, _, (h, w) = load_image(self, index)
         img, labels, lams = load_crop_mix_paste(self, index, alpha=self.hyp['alpha'])
